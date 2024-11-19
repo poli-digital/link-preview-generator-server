@@ -1,0 +1,46 @@
+name: deploy zcloud gamma
+on:
+  workflow_dispatch:
+
+jobs:
+  zCloudGammaDeploy:
+    runs-on: gharss
+    container:
+        image: public.ecr.aws/p1e5c6b5/zcloud-cli:latest
+    permissions:
+      deployments: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create GitHub deployment
+        uses: chrnorm/deployment-action@v2
+        id: deployment
+        with:
+          token: '${{ github.token }}'
+          environment-url: https://laravel-gamma-polidigital.svc-us3.zcloud.ws
+          environment: gamma
+
+      - name: Deploy with zCloud
+        run: zcloud deploy --user-token $ZCLOUDTOKEN --env $ZCLOUDENVGAMMA
+
+      - name: Update deployment status (success)
+        if: success()
+        uses: chrnorm/deployment-status@v2
+        with:
+          token: '${{ github.token }}'
+          environment-url: https://laravel-gamma-polidigital.svc-us3.zcloud.ws
+          state: 'success'
+          deployment-id: ${{ steps.deployment.outputs.deployment_id }}
+
+      - name: Update deployment status (failure)
+        if: failure()
+        uses: chrnorm/deployment-status@v2
+        with:
+          token: '${{ github.token }}'
+          environment-url: https://laravel-gamma-polidigital.svc-us3.zcloud.ws
+          state: 'failure'
+          deployment-id: ${{ steps.deployment.outputs.deployment_id }}
+
+    env:
+      ZCLOUDENVGAMMA: polidigital-link-preview-generator-server-gamma
+      ZCLOUDTOKEN: jkyzxp3yzdpwzlmsd-7ujcxiiyidgu7xrry
