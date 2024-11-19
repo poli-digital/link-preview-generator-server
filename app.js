@@ -18,6 +18,7 @@ app.use(cookieParser());
 app.use(cors());
 app.use(express.static(path.join(__dirname, "public")));
 
+/*
 // Adds rate limiting
 const limiter = rateLimit({
 	windowMs: 15 * 60 * 1000, // 15 minutes
@@ -28,6 +29,7 @@ const limiter = rateLimit({
 });
 
 app.use(limiter);
+*/
 
 app.use("/", indexRouter);
 
