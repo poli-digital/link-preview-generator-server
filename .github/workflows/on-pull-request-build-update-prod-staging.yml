@@ -13,7 +13,7 @@ jobs:
     env:
       REGION: us-east-2
       SERVICE_ACCOUNT: 244020757792
-      APP_NAME: omnispa
+      APP_NAME: link-preview-generator-server
       CI_PROJECT_TITLE: ${{ github.repository }}
       CI_PROJECT_URL: https://github.com/${{ github.repository }}
       CI_JOB_STARTED_AT: $(date -u +"%Y-%m-%dT%H:%M:%SZ")
@@ -107,7 +107,7 @@ jobs:
     env:
       REGION: us-east-2
       SERVICE_ACCOUNT: 244020757792
-      APP_NAME: omnispa
+      APP_NAME: link-preview-generator-server
       CI_PROJECT_TITLE: ${{ github.repository }}
       CI_PROJECT_URL: https://github.com/${{ github.repository }}
       CI_JOB_STARTED_AT: $(date -u +"%Y-%m-%dT%H:%M:%SZ")
