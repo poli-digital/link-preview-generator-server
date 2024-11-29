@@ -1,0 +1,252 @@
+name: Prod/Staging Build and Update
+
+on:
+  pull_request:
+    branches:
+      - main
+      - develop
+      - master
+
+jobs:
+  dockerBuildUpdateStaging:
+    name: Docker Build and Push Staging
+    env:
+      REGION: us-east-2
+      SERVICE_ACCOUNT: 244020757792
+      APP_NAME: link-preview-generator-server
+      CI_PROJECT_TITLE: ${{ github.repository }}
+      CI_PROJECT_URL: https://github.com/${{ github.repository }}
+      CI_JOB_STARTED_AT: $(date -u +"%Y-%m-%dT%H:%M:%SZ")
+      CI_COMMIT_SHA: ${{ github.event.pull_request.head.sha }}
+      CI_REF_NAME: ${{ github.ref_name }}
+      IMAGE_TAG: ${{ github.event.pull_request.head.sha }}-staging
+      CI_USERNAME: ${{ secrets.CI_USERNAME }}
+      CI_PUSH_TOKEN: ${{ secrets.CI_PUSH_TOKEN }}
+    permissions:
+      deployments: write
+      contents: read
+    runs-on: gharss
+    services:
+      docker:
+        image: public.ecr.aws/p1e5c6b5/docker:dind-rootless
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+      - name: Create GitHub deployment
+        uses: chrnorm/deployment-action@v2
+        id: deployment
+        with:
+          token: '${{ github.token }}'
+          environment-url: https://homolog.qa.poli.digital
+          environment: staging
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-2
+
+      - name: Amazon ECR "Login" Action for GitHub Actions
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+        env:
+          AWS_REGION: us-east-2
+        with:
+          registries: 244020757792
+      #- name: Login to Amazon ECR
+      #  run: docker run -e AWS_ACCESS_KEY_ID="${{ secrets.AWS_ACCESS_KEY_ID }}" -e AWS_SECRET_ACCESS_KEY="${{ secrets.AWS_SECRET_ACCESS_KEY }}" -e REGION="$REGION" --rm amazon/aws-cli ecr get-login-password | docker login --username AWS --password-stdin 244020757792.dkr.ecr.us-east-2.amazonaws.com
+      - name: Build and Push Docker Image
+        env:
+          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        run: |
+          docker build \
+            --file ./Dockerfile \
+            --tag $REGISTRY/$APP_NAME:latest \
+            --tag $REGISTRY/$APP_NAME:$IMAGE_TAG \
+            --label "org.opencontainers.image.title=$GITHUB_REPOSITORY" \
+            --label "org.opencontainers.image.url=https://github.com/$GITHUB_REPOSITORY" \
+            --label "org.opencontainers.image.created=$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
+            --label "org.opencontainers.image.revision=$IMAGE_TAG" \
+            --label "org.opencontainers.image.version=$GITHUB_REF_NAME" \
+            --build-arg AWS_ACCESS_KEY_ID \
+            --build-arg AWS_SECRET_ACCESS_KEY \
+            --build-arg POLICHAT_RELEASE=${{ github.ref }} \
+            --cache-from $REGISTRY/$APP_NAME:latest \
+            --platform linux/amd64 \
+            .
+          docker push $REGISTRY/$APP_NAME:latest
+          docker push $REGISTRY/$APP_NAME:$IMAGE_TAG
+
+      - name: Install yq
+        run: |
+          sudo apt update
+          sudo apt install -y wget
+          sudo wget https://github.com/mikefarah/yq/releases/download/v4.42.1/yq_linux_amd64 -O /usr/local/bin/yq
+          sudo chmod +x /usr/local/bin/yq
+
+      - name: Pull Manifests
+        run: |
+          sudo apt install git -y
+          git init
+          git clone -b main https://$CI_USERNAME:$CI_PUSH_TOKEN@gitlab.int.poli.digital/poli-digital/infra/kubernetes-manifest.git
+
+      - name: Update Helm Values
+        run: |
+          cd kubernetes-manifest/$APP_NAME/staging/
+          yq e '.image.tag = env(IMAGE_TAG)' -i values.yaml
+          git config --global user.email "polichat@polichat.com.br"
+          git config --global user.name "Polichat CI/CD"
+          git add .
+          git commit -m "Update $APP_NAME to version $IMAGE_TAG"
+          git push origin main
+
+  dockerBuildUpdateProd:
+    name: Docker Build and Push Prod
+    needs: dockerBuildUpdateStaging
+    env:
+      REGION: us-east-2
+      SERVICE_ACCOUNT: 244020757792
+      APP_NAME: link-preview-generator-server
+      CI_PROJECT_TITLE: ${{ github.repository }}
+      CI_PROJECT_URL: https://github.com/${{ github.repository }}
+      CI_JOB_STARTED_AT: $(date -u +"%Y-%m-%dT%H:%M:%SZ")
+      CI_COMMIT_SHA: ${{ github.event.pull_request.head.sha }}
+      CI_REF_NAME: ${{ github.ref_name }}
+      IMAGE_TAG: ${{ github.event.pull_request.head.sha }}
+      CI_USERNAME: ${{ secrets.CI_USERNAME }}
+      CI_PUSH_TOKEN: ${{ secrets.CI_PUSH_TOKEN }}
+      CI_SERVER_HOST: github.com
+    permissions:
+      deployments: write
+      contents: read
+    runs-on: gharss
+    services:
+      docker:
+        image: public.ecr.aws/p1e5c6b5/docker:dind-rootless
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+      - name: Create GitHub deployment
+        uses: chrnorm/deployment-action@v2
+        id: deployment
+        with:
+          token: '${{ github.token }}'
+          environment-url: https://app.poli.digital
+          environment: prod
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-2
+
+      - name: Amazon ECR "Login" Action for GitHub Actions
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+        env:
+          AWS_REGION: us-east-2
+        with:
+          registries: 244020757792
+          mask-password: 'false'
+      #- name: Login to Amazon ECR
+      #  run: docker run -e AWS_ACCESS_KEY_ID="${{ secrets.AWS_ACCESS_KEY_ID }}" -e AWS_SECRET_ACCESS_KEY="${{ secrets.AWS_SECRET_ACCESS_KEY }}" -e REGION="$REGION" --rm amazon/aws-cli ecr get-login-password | docker login --username AWS --password-stdin 244020757792.dkr.ecr.us-east-2.amazonaws.com
+      - name: Build and Push Docker Image
+        env:
+          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        run: |
+          docker build \
+            --file ./Dockerfile \
+            --tag $REGISTRY/$APP_NAME:latest \
+            --tag $REGISTRY/$APP_NAME:$IMAGE_TAG \
+            --label "org.opencontainers.image.title=$GITHUB_REPOSITORY" \
+            --label "org.opencontainers.image.url=https://github.com/$GITHUB_REPOSITORY" \
+            --label "org.opencontainers.image.created=$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
+            --label "org.opencontainers.image.revision=$GITHUB_SHA" \
+            --label "org.opencontainers.image.version=$GITHUB_REF_NAME" \
+            --build-arg AWS_ACCESS_KEY_ID \
+            --build-arg AWS_SECRET_ACCESS_KEY \
+            --build-arg POLICHAT_RELEASE=${{ github.ref }} \
+            --cache-from $REGISTRY/$APP_NAME:latest \
+            --platform linux/amd64 \
+            .
+          docker push $REGISTRY/$APP_NAME:latest
+          docker push $REGISTRY/$APP_NAME:$IMAGE_TAG
+
+      - name: Install yq
+        run: |
+          sudo apt update
+          sudo apt install -y wget
+          sudo wget https://github.com/mikefarah/yq/releases/download/v4.42.1/yq_linux_amd64 -O /usr/local/bin/yq
+          sudo chmod +x /usr/local/bin/yq
+
+      - name: Pull Manifests
+        run: |
+          sudo apt install git -y
+          git init
+          git clone -b main https://$CI_USERNAME:$CI_PUSH_TOKEN@gitlab.int.poli.digital/poli-digital/infra/kubernetes-manifest.git
+
+      - name: Update Helm Values
+        env:
+          DEPLOY_ID: ${{ steps.deployment.outputs.deployment_id }}
+        run: |
+          cd kubernetes-manifest/$APP_NAME/prod/
+          export DEPLOY_ID=$(echo -e \"$DEPLOY_ID\")
+          yq e '.image.tag = env(IMAGE_TAG)' -i values.yaml
+          yq e  '.podAnnotations."app.deploy_id" = env(DEPLOY_ID)' -i values.yaml
+          if ! [[ $(grep "app.project" values.yaml) ]]; then
+            yq e  '.podAnnotations."app.project" = env(GITHUB_REPOSITORY)' -i values.yaml
+          fi
+          if ! [[ $(grep "app.git_host" values.yaml) ]]; then
+            yq e  '.podAnnotations."app.git_host" = env(CI_SERVER_HOST)' -i values.yaml
+          fi
+          git config --global user.email "polichat@polichat.com.br"
+          git config --global user.name "Polichat CI/CD"
+          git add .
+          git commit -m "Update $APP_NAME to version $IMAGE_TAG"
+          git push origin main
+
+      - name: Update deployment status (in_progress)
+        if: success()
+        uses: chrnorm/deployment-status@v2
+        with:
+          token: '${{ github.token }}'
+          environment-url: https://homolog.qa.poli.digital
+          state: 'in_progress'
+          deployment-id: ${{ steps.deployment.outputs.deployment_id }}
+
+      - name: Update deployment status (failure)
+        if: failure()
+        uses: chrnorm/deployment-status@v2
+        with:
+          token: '${{ github.token }}'
+          environment-url: https://homolog.qa.poli.digital
+          state: 'failure'
+          deployment-id: ${{ steps.deployment.outputs.deployment_id }}
+    outputs:
+      ecr_username: ${{ steps.login-ecr.outputs.docker_username_244020757792_dkr_ecr_us_east_2_amazonaws_com }} # More information on these outputs can be found below in the 'Docker Credentials' section
+      ecr_pass: ${{ steps.login-ecr.outputs.docker_password_244020757792_dkr_ecr_us_east_2_amazonaws_com }}
+
+  checkVersionCards:
+    needs: dockerBuildUpdateProd
+    env:
+      git_hub_old_revision: main
+      git_hub_new_revision: ${{ github.event.pull_request.head.sha }}
+    permissions:
+      deployments: write
+      contents: read
+    runs-on: gharss
+    container:
+      image: 244020757792.dkr.ecr.us-east-2.amazonaws.com/version-cards-checker:2ba2c1c8-github
+      credentials:
+        username: ${{ needs.dockerBuildUpdateProd.outputs.ecr_username }}
+        password: ${{ needs.dockerBuildUpdateProd.outputs.ecr_pass }}
+    steps:
+      - name: run check
+        run: |
+          export git_hub_project=$(echo $GITHUB_REPOSITORY | cut -d"/" -f2) && \
+          echo $git_hub_project && \
+          echo $git_hub_old_revision && \
+          echo $git_hub_new_revision && \
+          python /app/main.py
