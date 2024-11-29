@@ -61,7 +61,7 @@ jobs:
           REGISTRY: ${{ steps.login-ecr.outputs.registry }}
         run: |
           docker build \
-            --file ./deployment/Dockerfile.staging \
+            --file ./Dockerfile \
             --tag $REGISTRY/$APP_NAME:latest \
             --tag $REGISTRY/$APP_NAME:$IMAGE_TAG \
             --label "org.opencontainers.image.title=$GITHUB_REPOSITORY" \
@@ -157,7 +157,7 @@ jobs:
           REGISTRY: ${{ steps.login-ecr.outputs.registry }}
         run: |
           docker build \
-            --file ./deployment/Dockerfile.prod \
+            --file ./Dockerfile \
             --tag $REGISTRY/$APP_NAME:latest \
             --tag $REGISTRY/$APP_NAME:$IMAGE_TAG \
             --label "org.opencontainers.image.title=$GITHUB_REPOSITORY" \
