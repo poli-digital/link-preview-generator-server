@@ -1,0 +1,106 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "backend-app.fullname" . }}
+  labels:
+    {{- include "backend-app.labels" . | nindent 4 }}
+    app.kubernetes.io/environment: {{ .Values.podLabels.environment  }}
+    app.kubernetes.io/component: {{ .Values.podLabels.component  }}
+    app.kubernetes.io/part-of: {{ .Values.podLabels.partof  }}
+    app.kubernetes.io/name: {{ .Values.podLabels.name  }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "backend-app.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "backend-app.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/environment: {{ .Values.podLabels.environment  }}
+        app.kubernetes.io/component: {{ .Values.podLabels.component  }}
+        app.kubernetes.io/part-of: {{ .Values.podLabels.partof  }}
+        app.kubernetes.io/name: {{ .Values.podLabels.name  }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "backend-app.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: {{ .Chart.Name }}
+          {{- if .Values.configmap.enabled}}
+          envFrom:
+            {{- if .Values.configmap.enabled }}
+            - configMapRef:
+                name: {{ include "backend-app.fullname" . }}
+            {{- end }}
+          {{- end }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.service.port }}
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: {{ .Values.livenessProbePath }}
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 15
+                #          readinessProbe:
+                #            httpGet:
+                #              path: {{ .Values.readinessProbePath }}
+                #              port: http
+                #            initialDelaySeconds: 30
+                #            periodSeconds: 15
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {}
+            privileged: false
+            runAsNonRoot: false
+          {{- if .Values.secret.enabled }}
+          volumeMounts:
+            - name: {{ .Values.secret.name }}
+              readOnly: true
+              mountPath: {{ .Values.secret.path }}
+          {{- end }}
+          {{- if .Values.lifecycle.enabled }}
+          lifecycle:
+            {{- if .Values.lifecycle.postStart.enabled }}
+            postStart:
+                exec:
+                    command:
+                    {{- toYaml .Values.lifecycle.postStart.command | nindent 20 }}
+            {{- end }}
+          {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if .Values.secret.enabled }}
+      volumes:
+      - secret:
+          secretName: {{ .Values.secret.name }}
+        name: {{ .Values.secret.name }}
+      {{- end }}

@@ -1,0 +1,16 @@
+apiVersion: logging.banzaicloud.io/v1beta1
+kind: Flow
+metadata:
+  name: {{ include "backend-app.fullname" . }}
+  labels:
+    {{- include "backend-app.labels" . | nindent 4 }}
+    app.kubernetes.io/environment: {{ .Values.podLabels.environment  }}
+    app.kubernetes.io/component: {{ .Values.podLabels.component  }}
+    app.kubernetes.io/part-of: {{ .Values.podLabels.partof  }}
+spec:
+  localOutputRefs:
+  - {{ .Values.loggingOutput }}
+  match:
+  - select:
+      labels:
+        app.kubernetes.io/name: {{ include "backend-app.fullname" . }}

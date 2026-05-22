@@ -1,0 +1,100 @@
+# Default values for backend-app.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+replicaCount: 1
+image:
+  repository: 244020757792.dkr.ecr.us-east-2.amazonaws.com/link-preview-generator-server
+  pullPolicy: Always
+  # Overrides the image tag whose default is the chart appVersion.
+  tag: b2edfc2ec24fcda4e3abe6d5c6aad8cc6ab502fe-staging
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+serviceAccount:
+  # Specifies whether a service account should be created
+  create: true
+  # Annotations to add to the service account
+  annotations: {}
+  # The name of the service account to use.
+  # If not set and create is true, a name is generated using the fullname template
+  name: ""
+loggingOutput: core-api-output
+podLabels:
+  environment: "prod"
+  component: "backend"
+  partof: "poli3.0"
+  name: "link-preview-generator-server"
+livenessProbePath: /
+readinessProbePath: /
+podAnnotations:
+  app.repository: https://github.com/poli-digital/link-preview-generator-server/tree/release/deploy-link
+  app.description: link-preview-generator-server app
+  app.owner: Poli
+  app.branch: 307/merge
+podSecurityContext: {}
+# fsGroup: 2000
+
+securityContext:
+  # capabilities:
+  #   drop:
+  #   - ALL
+  # readOnlyRootFilesystem: true
+  runAsNonRoot: false
+# runAsUser: 1000
+
+service:
+  type: ClusterIP
+  port: 3000
+ingress:
+  enabled: true
+  annotations:
+    kubernetes.io/ingress.class: alb
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:us-east-2:762837203807:certificate/46208e3c-df0a-4121-8da4-059e8b3fc710
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80},{"HTTPS":443}]'
+    alb.ingress.kubernetes.io/group.name: ap-ingress
+    alb.ingress.kubernetes.io/healthcheck-path: /
+    alb.ingress.kubernetes.io/healthcheck-port: "80"
+  hosts:
+    - host: lpgs.qa.poli.digital
+      paths:
+        - path: /*
+  tls: []
+  #  - secretName: chart-example-tls
+  #    hosts:
+  #      - chart-example.local
+resources:
+  # We usually recommend not to specify default resources and to leave this as a conscious
+  # choice for the user. This also increases chances charts run on environments with little
+  # resources, such as Minikube. If you do want to specify resources, uncomment the following
+  # lines, adjust them as necessary, and remove the curly braces after 'resources:'.
+  limits:
+    cpu: 2000m
+    memory: 800Mi
+  requests:
+    cpu: 2000m
+    memory: 800Mi
+autoscaling:
+  enabled: true
+  minReplicas: 1
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+  # targetMemoryUtilizationPercentage: 80
+nodeSelector: {}
+tolerations: []
+affinity: {}
+configmap:
+  enabled: false
+secret:
+  enabled: false
+  name: link-preview-generator-server
+  path: /usr/app/env
+lifecycle:
+  enabled: false
+  postStart:
+    enabled: false
+    command:
+      - /bin/sh
+      - -c
+      - cp /usr/app/env/.env /usr/app/.env

@@ -1,0 +1,12 @@
+{{- if .Values.configmap.enabled -}}
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: {{ include "backend-app.fullname" . }}
+  labels:
+    {{- include "backend-app.labels" . | nindent 4 }}
+    app.kubernetes.io/environment: {{ .Values.podLabels.environment  }}
+    app.kubernetes.io/component: {{ .Values.podLabels.component  }}
+    app.kubernetes.io/part-of: {{ .Values.podLabels.partof  }}
+data: {{ range .Files.Lines "config/values.yaml"}}{{ .|nindent 2 }}{{ end }}
+{{- end }}
