@@ -1,0 +1,25 @@
+name: Merge to Main
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: Feature branch to merge (e.g. DEV4-3978-descricao)
+        required: true
+      card_key:
+        description: JIRA card key (e.g. DEV4-3978)
+        required: true
+      notify:
+        description: Send Google Chat notification on completion
+        required: false
+        default: true
+        type: boolean
+
+jobs:
+  merge:
+    uses: poli-digital/templates/.github/workflows/MergeToMain.yml@main
+    with:
+      branch: ${{ inputs.branch }}
+      card_key: ${{ inputs.card_key }}
+      notify: ${{ inputs.notify }}
+    secrets: inherit

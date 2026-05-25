@@ -1,0 +1,17 @@
+name: Deploy Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      notify:
+        description: Send Google Chat notification on completion
+        required: false
+        default: true
+        type: boolean
+
+jobs:
+  deploy:
+    uses: poli-digital/templates/.github/workflows/DeployProd.yml@main
+    secrets: inherit
+    with:
+      notify: ${{ inputs.notify }}

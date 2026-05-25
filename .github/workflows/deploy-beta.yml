@@ -1,0 +1,22 @@
+name: Deploy Beta
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch: { required: true, type: string }
+      card_key: { required: true, type: string }
+      use_beta_dockerfile: { required: false, default: 'false', type: string }
+      notify:
+        description: Send Google Chat notification on completion
+        required: false
+        default: true
+        type: boolean
+jobs:
+  deploy:
+    uses: poli-digital/templates/.github/workflows/DeployBeta.yml@main
+    secrets: inherit
+    with:
+      branch: ${{ inputs.branch }}
+      card_key: ${{ inputs.card_key }}
+      use_beta_dockerfile: ${{ inputs.use_beta_dockerfile }}
+      notify: ${{ inputs.notify }}

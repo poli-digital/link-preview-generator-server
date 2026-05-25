@@ -1,0 +1,30 @@
+name: Build Branch
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: Feature branch to build (e.g. DEV4-3978-descricao)
+        required: true
+      card_key:
+        description: JIRA card key (e.g. DEV4-3978)
+        required: true
+      use_canary_dockerfile:
+        description: Whether the app has a Dockerfile.canary (true/false)
+        required: false
+        default: 'false'
+      notify:
+        description: Send Google Chat notification on completion
+        required: false
+        default: true
+        type: boolean
+
+jobs:
+  build:
+    uses: poli-digital/templates/.github/workflows/BuildBranch.yml@main
+    with:
+      branch: ${{ inputs.branch }}
+      card_key: ${{ inputs.card_key }}
+      use_canary_dockerfile: ${{ inputs.use_canary_dockerfile }}
+      notify: ${{ inputs.notify }}
+    secrets: inherit
