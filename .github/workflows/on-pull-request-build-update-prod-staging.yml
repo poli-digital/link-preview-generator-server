@@ -299,7 +299,7 @@ jobs:
                 echo "Nenhuma alteração detectada no values.yaml. Pulando commit e push."
               fi
     UpdateProd:
-        needs: dockerBuild
+        needs: UpdateStaging
         name: UpdateProd
         env:
           REGION: us-east-2
