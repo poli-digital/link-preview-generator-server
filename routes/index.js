@@ -8,13 +8,15 @@ router.get("/", function (req, res) {
 });
 
 router.post("/parse/link", async (req, res) => {
-	const { url } = req.body || {};
+	const { url, force_browser: forceBrowser } = req.body || {};
 	if (!url || typeof url !== "string") {
 		return res.status(400).json({ error: "Missing or invalid 'url' in body" });
 	}
 
 	try {
-		const previewData = await generateLinkPreview(url);
+		const previewData = await generateLinkPreview(url, {
+			forceBrowser: forceBrowser === true,
+		});
 		return res.json(previewData);
 	} catch (error) {
 		const status = error instanceof PreviewError ? error.status : 500;

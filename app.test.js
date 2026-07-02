@@ -51,6 +51,9 @@ describe("LPDG server endpoints", () => {
 	let originBase;
 
 	before(async () => {
+		// The local origin server binds to 127.0.0.1, which the SSRF guard blocks
+		// by default. Allow private hosts for this offline suite only.
+		process.env.PREVIEW_ALLOW_PRIVATE_HOSTS = "true";
 		// A local "origin" server that serves the sample HTML — no real network.
 		await new Promise((resolve) => {
 			originServer = http.createServer((req, res) => {
@@ -107,5 +110,46 @@ describe("LPDG server endpoints", () => {
 	after(() => {
 		server.close();
 		originServer.close();
+	});
+});
+
+describe("SSRF guard", () => {
+	const { assertPublicUrl, isPrivateIp } = require("./lib/ssrfGuard");
+
+	it("flags private / loopback / link-local addresses", () => {
+		assert.equal(isPrivateIp("127.0.0.1"), true);
+		assert.equal(isPrivateIp("10.1.2.3"), true);
+		assert.equal(isPrivateIp("192.168.0.1"), true);
+		assert.equal(isPrivateIp("172.16.5.4"), true);
+		assert.equal(isPrivateIp("169.254.169.254"), true); // cloud metadata
+		assert.equal(isPrivateIp("::1"), true);
+		assert.equal(isPrivateIp("8.8.8.8"), false);
+		assert.equal(isPrivateIp("1.1.1.1"), false);
+	});
+
+	it("blocks a literal private IP URL when private hosts are disallowed", async () => {
+		const prev = process.env.PREVIEW_ALLOW_PRIVATE_HOSTS;
+		delete process.env.PREVIEW_ALLOW_PRIVATE_HOSTS;
+		try {
+			await assert.rejects(
+				() => assertPublicUrl(new URL("http://169.254.169.254/latest/meta-data/")),
+				(err) => err.status === 403
+			);
+		} finally {
+			if (prev !== undefined) process.env.PREVIEW_ALLOW_PRIVATE_HOSTS = prev;
+		}
+	});
+
+	it("blocks localhost by name", async () => {
+		const prev = process.env.PREVIEW_ALLOW_PRIVATE_HOSTS;
+		delete process.env.PREVIEW_ALLOW_PRIVATE_HOSTS;
+		try {
+			await assert.rejects(
+				() => assertPublicUrl(new URL("http://localhost:6379/")),
+				(err) => err.status === 403
+			);
+		} finally {
+			if (prev !== undefined) process.env.PREVIEW_ALLOW_PRIVATE_HOSTS = prev;
+		}
 	});
 });

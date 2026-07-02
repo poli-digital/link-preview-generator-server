@@ -43,11 +43,21 @@ RUN apt-get update \
 
 WORKDIR /usr/src/app
 
-# Install prod deps deterministically. Puppeteer downloads its Chromium here.
-COPY package.json package-lock.json* ./
-RUN npm ci --omit=dev
+# Chrome cache lives in node's home so the BUILD-time download (runs as root) and
+# the RUNTIME lookup (USER node) agree. Without this, Chromium lands in
+# /root/.cache/puppeteer and the node user looks in /home/node/.cache/puppeteer
+# and reports "Could not find Chrome". Kept writable so the runtime self-heal
+# (lib/puppeteerFallback.js) can re-download if the binary is ever missing.
+ENV PUPPETEER_CACHE_DIR=/home/node/.cache/puppeteer
 
-COPY . .
+# Install prod deps deterministically. Puppeteer downloads its Chromium into
+# PUPPETEER_CACHE_DIR during postinstall.
+COPY package.json package-lock.json* ./
+RUN npm ci --omit=dev \
+	&& mkdir -p /home/node/.cache/puppeteer \
+	&& chown -R node:node /home/node/.cache /usr/src/app
+
+COPY --chown=node:node . .
 
 # Run as the non-root user that ships with the node image.
 USER node
