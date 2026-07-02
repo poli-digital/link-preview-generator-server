@@ -1,42 +1,35 @@
 var express = require("express");
 var router = express.Router();
-const linkPreviewGenerator = require("link-preview-generator");
+const { generateLinkPreview, PreviewError } = require("../lib/linkPreview");
 
 /* GET home page. */
-router.get("/", function (req, res, next) {
+router.get("/", function (req, res) {
 	res.render("index", { title: "Express" });
 });
 
 router.post("/parse/link", async (req, res) => {
+	const { url } = req.body || {};
+	if (!url || typeof url !== "string") {
+		return res.status(400).json({ error: "Missing or invalid 'url' in body" });
+	}
+
 	try {
-		const { url } = req.body;
-		// adds args for puppeteer
-		const previewData = await linkPreviewGenerator(url, [
-			"--no-sandbox",
-			"--disable-setuid-sandbox",
-		]);
+		const previewData = await generateLinkPreview(url);
 		return res.json(previewData);
 	} catch (error) {
-		return res.status(500).json(error);
+		const status = error instanceof PreviewError ? error.status : 500;
+		// Serialize a real message — `res.json(error)` yields `{}` because Error
+		// props aren't enumerable.
+		return res.status(status).json({ error: error.message });
 	}
 });
 
-router.get("/health", async (req, res) => {
-	try {
-		const healthcheck = {
-			uptime: `${process.uptime()} seconds`,
-			message: "OK",
-			timestamp: Date.now(),
-		};
-		res.send(healthcheck);
-	} catch (error) {
-		next(
-			createError({
-				status: SERVICE_UNAVAILABLE,
-				message: error,
-			})
-		);
-	}
+router.get("/health", (req, res) => {
+	res.json({
+		uptime: `${process.uptime()} seconds`,
+		message: "OK",
+		timestamp: Date.now(),
+	});
 });
 
 module.exports = router;
