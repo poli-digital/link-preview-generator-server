@@ -6,7 +6,7 @@ image:
   repository: 244020757792.dkr.ecr.us-east-2.amazonaws.com/link-preview-generator-server
   pullPolicy: Always
   # Overrides the image tag whose default is the chart appVersion.
-  tag: 48cbdf03e2253842a4eb4374f4d55a5b4e6519cc
+  tag: dc7de2b30f4ba8ad7af5f6a42cab8fcc712c3a5d
 imagePullSecrets: []
 nameOverride: ""
 fullnameOverride: ""
@@ -33,7 +33,7 @@ podAnnotations:
   app.commit_sha: e2cdb3241b13ef63b2dc9ddc27df913397ccaff4
   app.project_id: "777384101"
   app.git_host: github.com
-  app.deploy_id: "5292009739"
+  app.deploy_id: "5299823341"
   app.branch: 2/merge
 podSecurityContext: {}
 # fsGroup: 2000
