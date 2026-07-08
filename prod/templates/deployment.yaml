@@ -33,6 +33,10 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       serviceAccountName: {{ include "backend-app.serviceAccountName" . }}
+      dnsConfig:
+        options:
+          - name: ndots
+            value: "2"
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:
