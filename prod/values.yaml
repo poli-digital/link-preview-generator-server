@@ -54,7 +54,7 @@ ingress:
   annotations:
     kubernetes.io/ingress.class: alb
     alb.ingress.kubernetes.io/scheme: internet-facing
-    alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:us-east-2:757381705912:certificate/0071eba8-163b-4ae4-8763-4442ba732039
+    alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:us-east-2:757381705912:certificate/751bf95e-ab06-47a3-bb9c-1e4a4e1bd825
     alb.ingress.kubernetes.io/target-type: ip
     alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80},{"HTTPS":443}]'
     alb.ingress.kubernetes.io/group.name: poli-ingress
