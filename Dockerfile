@@ -2,7 +2,7 @@
 # ON by default (for JS-rendered / bot-protected pages), so the image ships with
 # Chromium's runtime libs. Disable the fallback with PUPPETEER_FALLBACK=false if
 # you want a slimmer footprint.
-FROM node:20-slim
+FROM node:24.22.1-bookworm-slim
 
 # dumb-init reaps zombies and forwards signals so SIGTERM triggers graceful shutdown.
 # The rest are the shared libraries Chromium needs to launch headless.
