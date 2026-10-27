@@ -1,0 +1,16 @@
+name: link-preview-generator-server
+id: ari:cloud:compass:d1d9f267-e2bb-4eba-889f-94028c5b05c4:component/5053650e-af41-4103-937c-7f83369b6aab/b57482ce-be9b-4e19-82b5-a75848961564
+description: Fork de https://github.com/ashwamegh/link-preview-generator-server
+configVersion: 1
+typeId: SERVICE
+fields:
+  tier: 4
+links:
+  - name: null
+    type: REPOSITORY
+    url: https://github.com/poli-digital/link-preview-generator-server
+relationships:
+  DEPENDS_ON: []
+labels:
+  - source:github
+customFields: null
