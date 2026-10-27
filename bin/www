@@ -29,6 +29,44 @@ server.listen(port);
 server.on("error", onError);
 server.on("listening", onListening);
 
+// Proactively ensure Chrome is present (background, non-blocking) so the first
+// fallback request doesn't wait on a download. No-op when the fallback is off or
+// a system Chromium is configured.
+if (process.env.PUPPETEER_FALLBACK !== "false") {
+	try {
+		require("../lib/puppeteerFallback").warmup();
+	} catch (err) {
+		console.warn(`Puppeteer warmup skipped: ${err.message}`);
+	}
+}
+
+/**
+ * Graceful shutdown: stop accepting connections, drain in-flight requests, and
+ * close the optional Puppeteer browser so Kubernetes SIGTERM doesn't leak
+ * processes or kill requests mid-flight.
+ */
+function shutdown(signal) {
+	console.info(`Received ${signal}, shutting down gracefully...`);
+	server.close(async () => {
+		try {
+			// Fallback is ON by default (opt out with PUPPETEER_FALLBACK=false), so
+			// close the browser unless it was explicitly disabled.
+			if (process.env.PUPPETEER_FALLBACK !== "false") {
+				const { closeBrowser } = require("../lib/puppeteerFallback");
+				await closeBrowser();
+			}
+		} catch (err) {
+			console.error("Error during shutdown:", err);
+		}
+		process.exit(0);
+	});
+	// Force-exit if draining hangs.
+	setTimeout(() => process.exit(1), 10000).unref();
+}
+
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT", () => shutdown("SIGINT"));
+
 /**
  * Normalize a port into a number, string, or false.
  */

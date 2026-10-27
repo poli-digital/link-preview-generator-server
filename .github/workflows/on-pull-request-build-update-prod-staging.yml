@@ -8,245 +8,436 @@ on:
       - master
 
 jobs:
-  dockerBuildUpdateStaging:
-    name: Docker Build and Push Staging
-    env:
-      REGION: us-east-2
-      SERVICE_ACCOUNT: 244020757792
-      APP_NAME: link-preview-generator-server
-      CI_PROJECT_TITLE: ${{ github.repository }}
-      CI_PROJECT_URL: https://github.com/${{ github.repository }}
-      CI_JOB_STARTED_AT: $(date -u +"%Y-%m-%dT%H:%M:%SZ")
-      CI_COMMIT_SHA: ${{ github.event.pull_request.head.sha }}
-      CI_REF_NAME: ${{ github.ref_name }}
-      IMAGE_TAG: ${{ github.event.pull_request.head.sha }}-staging
-      CI_USERNAME: ${{ secrets.CI_USERNAME }}
-      CI_PUSH_TOKEN: ${{ secrets.CI_PUSH_TOKEN }}
-    permissions:
-      deployments: write
-      contents: read
-    runs-on: gharss
-    services:
-      docker:
-        image: public.ecr.aws/p1e5c6b5/docker:dind-rootless
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v2
-      - name: Create GitHub deployment
-        uses: chrnorm/deployment-action@v2
-        id: deployment
-        with:
-          token: '${{ github.token }}'
-          environment-url: https://homolog.qa.poli.digital
-          environment: staging
-
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v1
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-east-2
-
-      - name: Amazon ECR "Login" Action for GitHub Actions
-        id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v2
+    dockerBuild:
+        name: dockerBuild
         env:
-          AWS_REGION: us-east-2
-        with:
-          registries: 244020757792
-      #- name: Login to Amazon ECR
-      #  run: docker run -e AWS_ACCESS_KEY_ID="${{ secrets.AWS_ACCESS_KEY_ID }}" -e AWS_SECRET_ACCESS_KEY="${{ secrets.AWS_SECRET_ACCESS_KEY }}" -e REGION="$REGION" --rm amazon/aws-cli ecr get-login-password | docker login --username AWS --password-stdin 244020757792.dkr.ecr.us-east-2.amazonaws.com
-      - name: Build and Push Docker Image
+          REGION: us-east-2
+          SERVICE_ACCOUNT: 244020757792
+          APP_NAME: ${{ github.repository }}
+          CI_PROJECT_TITLE: ${{ github.repository }}
+          CI_PROJECT_URL: https://github.com/${{ github.repository }}
+          CI_JOB_STARTED_AT: $(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          CI_COMMIT_SHA: ${{ github.sha }}
+          CI_REF_NAME: ${{ github.ref_name }}
+          CI_USERNAME: ${{ secrets.CI_USERNAME }}
+          CI_PUSH_TOKEN: ${{ secrets.CI_PUSH_TOKEN }}
+          CI_SERVER_HOST: github.com
+          ZCLOUD_NPM_TOKEN: ${{ secrets.ZCLOUD_NPM_TOKEN }}
+        permissions:
+          deployments: write
+          contents: read
+        runs-on: gharss
+        services:
+          docker:
+            image: public.ecr.aws/p1e5c6b5/docker:dind-rootless
+        steps:
+          - name: Definir IMAGE_TAG
+            run: |
+              if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+                IMAGE_TAG="${GITHUB_REF#refs/tags/}"
+              else
+                IMAGE_TAG="${GITHUB_SHA}"
+              fi
+              echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
+              echo "IMAGE_TAG definido como: $IMAGE_TAG"
+          - name: Set APP_NAME to repository name
+            run: echo "APP_NAME=$(basename ${GITHUB_REPOSITORY})" >> $GITHUB_ENV
+          - name: Adjust APP_NAME if necessary
+            run: |
+              if [ "$APP_NAME" == "FoundationAPI" ]; then
+                echo "APP_NAME=omniapi" >> $GITHUB_ENV
+              elif [ "$APP_NAME" == "SPA" ]; then
+                echo "APP_NAME=omnispa" >> $GITHUB_ENV
+              elif [ "$APP_NAME" == "GLOTA" ]; then
+                echo "APP_NAME=glota" >> $GITHUB_ENV
+              elif [ "$APP_NAME" == "Leads" ]; then
+                echo "APP_NAME=leads" >> $GITHUB_ENV
+              elif [ "$APP_NAME" == "Felix" ]; then
+                echo "APP_NAME=felix" >> $GITHUB_ENV
+              elif [ "$APP_NAME" == "Hermes" ]; then
+                echo "APP_NAME=hermes" >> $GITHUB_ENV
+              elif [ "$APP_NAME" == "Atlas" ]; then
+                echo "APP_NAME=atlas" >> $GITHUB_ENV
+              fi
+          - name: Checkout
+            uses: actions/checkout@v2
+
+          - name: 🔐 Login to Docker Hub
+            run: echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
+
+          - name: Configure AWS Credentials
+            uses: aws-actions/configure-aws-credentials@v1
+            with:
+              aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+              aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+              aws-region: us-east-2
+    
+          - name: Amazon ECR "Login" Action for GitHub Actions
+            id: login-ecr
+            uses: aws-actions/amazon-ecr-login@v2
+            env:
+              AWS_REGION: us-east-2
+            with:
+              registries: 244020757792
+          - name: Create .npmrc
+            run: |
+                if [[ ! -f .npmrc ]]; then
+                  echo 'No .npmrc found! Creating one now. Please review the following link for more information: https://docs.gitlab.com/ee/user/packages/npm_registry/index.html#project-level-npm-endpoint-1'
+                  {
+                  if [[ $APP_NAME == "chatbot" ]]; then
+                    echo "strict-peer-dependencies=false"
+                    echo "engine-strict=true"
+                  fi
+                  echo "@polichat:registry=https://gitlab.int.poli.digital/api/v4/projects/188/packages/npm/"
+                  echo "//gitlab.int.poli.digital/api/v4/projects/188/packages/npm/:_authToken=${ZCLOUD_NPM_TOKEN}"
+                  echo "@poli-ink:registry=https://gitlab.int.poli.digital/api/v4/projects/213/packages/npm/"
+                  echo "//gitlab.int.poli.digital/api/v4/projects/213/packages/npm/:_authToken=${ZCLOUD_NPM_TOKEN}"
+                  echo "@poli:registry=https://gitlab.int.poli.digital/api/v4/projects/150/packages/npm/"
+                  echo "//gitlab.int.poli.digital/api/v4/projects/150/packages/npm/:_authToken=${ZCLOUD_NPM_TOKEN}"
+                  echo "@poli.digital:registry=https://gitlab.int.poli.digital/api/v4/projects/150/packages/npm/"
+                  echo "//gitlab.int.poli.digital/api/v4/projects/150/packages/npm/:_authToken=${ZCLOUD_NPM_TOKEN}"
+                  echo "@poli-digital:registry=https://npm.pkg.github.com"
+                  echo "//npm.pkg.github.com/:_authToken=${ZCLOUD_NPM_TOKEN}"
+                  } > .npmrc
+                fi
+          - name: Build and Push Docker Image
+            env:
+              REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+            run: |
+              docker build \
+                --file ./deployment/Dockerfile \
+                --tag $REGISTRY/$APP_NAME:latest \
+                --tag $REGISTRY/$APP_NAME:$IMAGE_TAG \
+                --label "org.opencontainers.image.title=$GITHUB_REPOSITORY" \
+                --label "org.opencontainers.image.url=https://github.com/$GITHUB_REPOSITORY" \
+                --label "org.opencontainers.image.created=$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
+                --label "org.opencontainers.image.revision=$IMAGE_TAG" \
+                --label "org.opencontainers.image.version=$GITHUB_REF_NAME" \
+                --build-arg AWS_ACCESS_KEY_ID \
+                --build-arg AWS_SECRET_ACCESS_KEY \
+                --build-arg POLICHAT_RELEASE=$IMAGE_TAG \
+                --cache-from $REGISTRY/$APP_NAME:latest \
+                --platform linux/amd64 \
+                .
+              docker push $REGISTRY/$APP_NAME:latest
+              docker push $REGISTRY/$APP_NAME:$IMAGE_TAG
+
+          - name: Install yq
+            run: |
+              sudo apt update
+              sudo apt install -y wget
+              sudo wget https://github.com/mikefarah/yq/releases/download/v4.52.5/yq_linux_amd64 -O /usr/local/bin/yq
+              sudo chmod +x /usr/local/bin/yq
+    
+          - name: Scan image and upload to S3
+            env:
+              SCANNERS: "vuln"
+              REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+            run: |
+              wget https://github.com/aquasecurity/trivy/releases/download/v0.69.2/trivy_0.69.2_Linux-64bit.deb
+              sudo dpkg -i trivy_0.69.2_Linux-64bit.deb
+              trivy plugin install scan2html
+              trivy scan2html --scanners $SCANNERS image $REGISTRY/$APP_NAME:$IMAGE_TAG --scan2html-flags --output $APP_NAME-$IMAGE_TAG-report.html 
+              docker run -v $(pwd):/aws -e AWS_ACCESS_KEY_ID="${{ secrets.AWS_ACCESS_KEY_ID }}" -e AWS_SECRET_ACCESS_KEY="${{ secrets.AWS_SECRET_ACCESS_KEY }}" --rm amazon/aws-cli --region $REGION s3 cp $APP_NAME-$IMAGE_TAG-report.html s3://poli-vuln-scan-pages/reports/$APP_NAME-$IMAGE_TAG-report.html
+              trivy --format json --scanners vuln --output $APP_NAME-$IMAGE_TAG-report.json image $SERVICE_ACCOUNT.dkr.ecr.$REGION.amazonaws.com/$APP_NAME:$IMAGE_TAG
+              trivy scan2html generate --scan2html-flags --output $APP_NAME-$IMAGE_TAG-report.html --from $APP_NAME-$IMAGE_TAG-report.json
+              export VULN_TOTAL=$(total=0; targets=$(cat $APP_NAME-$IMAGE_TAG-report.json | jq -r '.Results | length'); for ((i = 0 ; i < targets; i++)); do num=$(cat $APP_NAME-$IMAGE_TAG-report.json | jq -r '.Results['$i'].Vulnerabilities | length'); total=$(( total + num )); done; echo $total)
+              docker run -v $(pwd):/aws -e AWS_ACCESS_KEY_ID="${{ secrets.AWS_ACCESS_KEY_ID }}" -e AWS_SECRET_ACCESS_KEY="${{ secrets.AWS_SECRET_ACCESS_KEY }}" --rm amazon/aws-cli --region $REGION s3 cp $APP_NAME-$IMAGE_TAG-report.html s3://poli-vuln-scan-pages/reports/$APP_NAME-$IMAGE_TAG-report.html
+              docker run -v $(pwd):/aws -e AWS_ACCESS_KEY_ID="${{ secrets.AWS_ACCESS_KEY_ID }}" -e AWS_SECRET_ACCESS_KEY="${{ secrets.AWS_SECRET_ACCESS_KEY }}" --rm amazon/aws-cli --region $REGION s3api put-object-tagging --bucket poli-vuln-scan-pages --key reports/$APP_NAME-$IMAGE_TAG-report.html --tagging '{"TagSet": [{"Key": "vulnTotal", "Value": "'$VULN_TOTAL'"}]}'
+          
+          - name: Upload a SBOM Artifact
+            uses: actions/upload-artifact@v5.0.0
+            with:
+              # Artifact name
+              name: ${{ env.APP_NAME }}-${{ env.IMAGE_TAG }}-report
+              # A file, directory or wildcard pattern that describes what to upload
+              path: ${{ env.APP_NAME }}-${{ env.IMAGE_TAG }}-report.html
+        outputs:
+          ecr_username: ${{ steps.login-ecr.outputs.docker_username_244020757792_dkr_ecr_us_east_2_amazonaws_com }}
+          ecr_pass: ${{ steps.login-ecr.outputs.docker_password_244020757792_dkr_ecr_us_east_2_amazonaws_com }}
+    UpdateStaging:
+        needs: dockerBuild
+        name: UpdateStaging
         env:
-          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-        run: |
-          docker build \
-            --file ./Dockerfile \
-            --tag $REGISTRY/$APP_NAME:latest \
-            --tag $REGISTRY/$APP_NAME:$IMAGE_TAG \
-            --label "org.opencontainers.image.title=$GITHUB_REPOSITORY" \
-            --label "org.opencontainers.image.url=https://github.com/$GITHUB_REPOSITORY" \
-            --label "org.opencontainers.image.created=$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
-            --label "org.opencontainers.image.revision=$IMAGE_TAG" \
-            --label "org.opencontainers.image.version=$GITHUB_REF_NAME" \
-            --build-arg AWS_ACCESS_KEY_ID \
-            --build-arg AWS_SECRET_ACCESS_KEY \
-            --build-arg POLICHAT_RELEASE=${{ github.ref }} \
-            --cache-from $REGISTRY/$APP_NAME:latest \
-            --platform linux/amd64 \
-            .
-          docker push $REGISTRY/$APP_NAME:latest
-          docker push $REGISTRY/$APP_NAME:$IMAGE_TAG
+          REGION: us-east-2
+          SERVICE_ACCOUNT: 244020757792
+          APP_NAME: ${{ github.repository }}
+          CI_PROJECT_TITLE: ${{ github.repository }}
+          CI_PROJECT_URL: https://github.com/${{ github.repository }}
+          CI_JOB_STARTED_AT: $(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          CI_COMMIT_SHA: ${{ github.sha }}
+          CI_REF_NAME: ${{ github.ref_name }}
+          CI_USERNAME: ${{ secrets.CI_USERNAME }}
+          CI_PUSH_TOKEN: ${{ secrets.CI_PUSH_TOKEN }}
+          CI_SERVER_HOST: github.com
+          ZCLOUD_NPM_TOKEN: ${{ secrets.ZCLOUD_NPM_TOKEN }}
+        permissions:
+          deployments: write
+          contents: write
+        runs-on: gharss
 
-      - name: Install yq
-        run: |
-          sudo apt update
-          sudo apt install -y wget
-          sudo wget https://github.com/mikefarah/yq/releases/download/v4.42.1/yq_linux_amd64 -O /usr/local/bin/yq
-          sudo chmod +x /usr/local/bin/yq
+        steps:
+          - name: Definir IMAGE_TAG
+            run: |
+              if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+                IMAGE_TAG="${GITHUB_REF#refs/tags/}"
+              else
+                IMAGE_TAG="${GITHUB_SHA}"
+              fi
+              echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
+              echo "IMAGE_TAG definido como: $IMAGE_TAG"
+          - name: Set APP_NAME to repository name
+            run: echo "APP_NAME=$(basename ${GITHUB_REPOSITORY})" >> $GITHUB_ENV
+          - name: Adjust APP_NAME if necessary
+            run: |
+              if [ "$APP_NAME" == "FoundationAPI" ]; then
+                echo "APP_NAME=omniapi" >> $GITHUB_ENV
+              elif [ "$APP_NAME" == "SPA" ]; then
+                echo "APP_NAME=omnispa" >> $GITHUB_ENV
+              elif [ "$APP_NAME" == "GLOTA" ]; then
+                echo "APP_NAME=glota" >> $GITHUB_ENV
+              elif [ "$APP_NAME" == "Leads" ]; then
+                echo "APP_NAME=leads" >> $GITHUB_ENV
+              elif [ "$APP_NAME" == "Felix" ]; then
+                echo "APP_NAME=felix" >> $GITHUB_ENV
+              elif [ "$APP_NAME" == "Hermes" ]; then
+                echo "APP_NAME=hermes" >> $GITHUB_ENV
+              elif [ "$APP_NAME" == "Atlas" ]; then
+                echo "APP_NAME=atlas" >> $GITHUB_ENV
+              fi
 
-      - name: Pull Manifests
-        run: |
-          sudo apt install git -y
-          git init
-          git clone -b main https://$CI_USERNAME:$CI_PUSH_TOKEN@gitlab.int.poli.digital/poli-digital/infra/kubernetes-manifest.git
+          - name: Create GitHub deployment
+            uses: chrnorm/deployment-action@v2
+            id: deployment
+            with:
+              token: '${{ github.token }}'
+              environment-url: https://homolog.qa.poli.digital
+              environment: staging
+    
+          - name: Install yq
+            run: |
+              sudo apt update
+              sudo apt install -y wget
+              sudo wget https://github.com/mikefarah/yq/releases/download/v4.42.1/yq_linux_amd64 -O /usr/local/bin/yq
+              sudo chmod +x /usr/local/bin/yq
+    
+          - name: Checkout
+            uses: actions/checkout@v6
+            with:
+              ref: 'devops/chart'
 
-      - name: Update Helm Values
-        run: |
-          cd kubernetes-manifest/$APP_NAME/staging/
-          yq e '.image.tag = env(IMAGE_TAG)' -i values.yaml
-          git config --global user.email "polichat@polichat.com.br"
-          git config --global user.name "Polichat CI/CD"
-          git add .
-          git commit -m "Update $APP_NAME to version $IMAGE_TAG"
-          git push origin main
-
-  dockerBuildUpdateProd:
-    name: Docker Build and Push Prod
-    needs: dockerBuildUpdateStaging
-    env:
-      REGION: us-east-2
-      SERVICE_ACCOUNT: 244020757792
-      APP_NAME: link-preview-generator-server
-      CI_PROJECT_TITLE: ${{ github.repository }}
-      CI_PROJECT_URL: https://github.com/${{ github.repository }}
-      CI_JOB_STARTED_AT: $(date -u +"%Y-%m-%dT%H:%M:%SZ")
-      CI_COMMIT_SHA: ${{ github.event.pull_request.head.sha }}
-      CI_REF_NAME: ${{ github.ref_name }}
-      IMAGE_TAG: ${{ github.event.pull_request.head.sha }}
-      CI_USERNAME: ${{ secrets.CI_USERNAME }}
-      CI_PUSH_TOKEN: ${{ secrets.CI_PUSH_TOKEN }}
-      CI_SERVER_HOST: github.com
-    permissions:
-      deployments: write
-      contents: read
-    runs-on: gharss
-    services:
-      docker:
-        image: public.ecr.aws/p1e5c6b5/docker:dind-rootless
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v2
-      - name: Create GitHub deployment
-        uses: chrnorm/deployment-action@v2
-        id: deployment
-        with:
-          token: '${{ github.token }}'
-          environment-url: https://app.poli.digital
-          environment: prod
-
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v1
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-east-2
-
-      - name: Amazon ECR "Login" Action for GitHub Actions
-        id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v2
+          - name: Update Helm Values
+            env:
+              DEPLOY_ID: ${{ steps.deployment.outputs.deployment_id }}
+            run: |
+              cd ./staging/
+              export DEPLOY_ID=$(echo -e \"$DEPLOY_ID\")
+              yq e '.image.tag = env(IMAGE_TAG)' -i values.yaml
+              yq e  '.podAnnotations."app.deploy_id" = env(DEPLOY_ID)' -i values.yaml
+              yq e  '.podAnnotations."app.branch" = env(CI_REF_NAME)' -i values.yaml
+              if ! [[ $(grep "app.project" values.yaml) ]]; then
+                yq e  '.podAnnotations."app.project" = env(GITHUB_REPOSITORY)' -i values.yaml
+              fi
+              if ! [[ $(grep "app.git_host" values.yaml) ]]; then
+                yq e  '.podAnnotations."app.git_host" = env(CI_SERVER_HOST)' -i values.yaml
+              fi
+              git config --global user.email "polichat@polichat.com.br"
+              git config --global user.name "Polichat CI/CD"
+              # Bloco para update dos workers da foundation
+              if [ "$APP_NAME" == "polichat-web-app" ]; then
+                for DIR in staging-webhook staging-webhook-zapi staging-webhook-waba staging-webhook-foundation staging-queue-worker; do
+                  if [ -d "../$DIR" ]; then
+                    cd "../$DIR"
+                    yq e '.image.tag = env(IMAGE_TAG)' -i values.yaml
+                    yq e '.podAnnotations."app.deploy_id" = env(DEPLOY_ID)' -i values.yaml
+                    yq e '.podAnnotations."app.branch" = env(CI_REF_NAME)' -i values.yaml
+                    if ! [[ $(grep "app.project" values.yaml) ]]; then
+                      yq e '.podAnnotations."app.project" = env(GITHUB_REPOSITORY)' -i values.yaml
+                    fi
+                    if ! [[ $(grep "app.git_host" values.yaml) ]]; then
+                      yq e '.podAnnotations."app.git_host" = env(CI_SERVER_HOST)' -i values.yaml
+                    fi
+                    cd - > /dev/null
+                  else
+                    echo "Diretório ../$DIR não encontrado, pulando..."
+                  fi
+                done
+              fi
+              if [ "$APP_NAME" == "omniapi" ]; then
+                echo "Updating $APP_NAME-cli"
+                cd ../staging-workers/
+                yq e '.image.tag = env(IMAGE_TAG)' -i values.yaml
+                yq e  '.podAnnotations."app.deploy_id" = env(DEPLOY_ID)' -i values.yaml
+                yq e  '.podAnnotations."app.branch" = env(CI_REF_NAME)' -i values.yaml
+                if ! [[ $(grep "app.project" values.yaml) ]]; then
+                  yq e  '.podAnnotations."app.project" = env(GITHUB_REPOSITORY)' -i values.yaml
+                fi
+                if ! [[ $(grep "app.git_host" values.yaml) ]]; then
+                  yq e  '.podAnnotations."app.git_host" = env(CI_SERVER_HOST)' -i values.yaml
+                fi
+              fi
+              if [ "$APP_NAME" == "meta-business-management" ] || [ "$APP_NAME" == "meta-whatsapp-cloud-api" ]; then
+                echo "Updating $APP_NAME-cli"
+                cd ../staging-cli/
+                yq e '.image.tag = env(IMAGE_TAG)' -i values.yaml
+                yq e  '.podAnnotations."app.deploy_id" = env(DEPLOY_ID)' -i values.yaml
+                yq e  '.podAnnotations."app.branch" = env(CI_REF_NAME)' -i values.yaml
+                if ! [[ $(grep "app.project" values.yaml) ]]; then
+                  yq e  '.podAnnotations."app.project" = env(GITHUB_REPOSITORY)' -i values.yaml
+                fi
+                if ! [[ $(grep "app.git_host" values.yaml) ]]; then
+                  yq e  '.podAnnotations."app.git_host" = env(CI_SERVER_HOST)' -i values.yaml
+                fi
+              fi
+              cd ..
+              git add .
+              # Novo bloco de lógica condicional para commit/push
+              if ! git diff-index --quiet HEAD; then
+                git commit -m "Update $APP_NAME to version $IMAGE_TAG"
+                git push origin devops/chart
+              else
+                echo "Nenhuma alteração detectada no values.yaml. Pulando commit e push."
+              fi
+    UpdateProd:
+        needs: UpdateStaging
+        name: UpdateProd
         env:
-          AWS_REGION: us-east-2
-        with:
-          registries: 244020757792
-          mask-password: 'false'
-      #- name: Login to Amazon ECR
-      #  run: docker run -e AWS_ACCESS_KEY_ID="${{ secrets.AWS_ACCESS_KEY_ID }}" -e AWS_SECRET_ACCESS_KEY="${{ secrets.AWS_SECRET_ACCESS_KEY }}" -e REGION="$REGION" --rm amazon/aws-cli ecr get-login-password | docker login --username AWS --password-stdin 244020757792.dkr.ecr.us-east-2.amazonaws.com
-      - name: Build and Push Docker Image
-        env:
-          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-        run: |
-          docker build \
-            --file ./Dockerfile \
-            --tag $REGISTRY/$APP_NAME:latest \
-            --tag $REGISTRY/$APP_NAME:$IMAGE_TAG \
-            --label "org.opencontainers.image.title=$GITHUB_REPOSITORY" \
-            --label "org.opencontainers.image.url=https://github.com/$GITHUB_REPOSITORY" \
-            --label "org.opencontainers.image.created=$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
-            --label "org.opencontainers.image.revision=$GITHUB_SHA" \
-            --label "org.opencontainers.image.version=$GITHUB_REF_NAME" \
-            --build-arg AWS_ACCESS_KEY_ID \
-            --build-arg AWS_SECRET_ACCESS_KEY \
-            --build-arg POLICHAT_RELEASE=${{ github.ref }} \
-            --cache-from $REGISTRY/$APP_NAME:latest \
-            --platform linux/amd64 \
-            .
-          docker push $REGISTRY/$APP_NAME:latest
-          docker push $REGISTRY/$APP_NAME:$IMAGE_TAG
+          REGION: us-east-2
+          SERVICE_ACCOUNT: 244020757792
+          APP_NAME: ${{ github.repository }}
+          CI_PROJECT_TITLE: ${{ github.repository }}
+          CI_PROJECT_URL: https://github.com/${{ github.repository }}
+          CI_JOB_STARTED_AT: $(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          CI_COMMIT_SHA: ${{ github.sha }}
+          CI_REF_NAME: ${{ github.ref_name }}
+          CI_USERNAME: ${{ secrets.CI_USERNAME }}
+          CI_PUSH_TOKEN: ${{ secrets.CI_PUSH_TOKEN }}
+          CI_SERVER_HOST: github.com
+          ZCLOUD_NPM_TOKEN: ${{ secrets.ZCLOUD_NPM_TOKEN }}
+        permissions:
+          deployments: write
+          contents: write
+        runs-on: gharss
 
-      - name: Install yq
-        run: |
-          sudo apt update
-          sudo apt install -y wget
-          sudo wget https://github.com/mikefarah/yq/releases/download/v4.42.1/yq_linux_amd64 -O /usr/local/bin/yq
-          sudo chmod +x /usr/local/bin/yq
+        steps:
+          - name: Definir IMAGE_TAG
+            run: |
+              if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+                IMAGE_TAG="${GITHUB_REF#refs/tags/}"
+              else
+                IMAGE_TAG="${GITHUB_SHA}"
+              fi
+              echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
+              echo "IMAGE_TAG definido como: $IMAGE_TAG"
+          - name: Set APP_NAME to repository name
+            run: echo "APP_NAME=$(basename ${GITHUB_REPOSITORY})" >> $GITHUB_ENV
+          - name: Adjust APP_NAME if necessary
+            run: |
+              if [ "$APP_NAME" == "FoundationAPI" ]; then
+                echo "APP_NAME=omniapi" >> $GITHUB_ENV
+              elif [ "$APP_NAME" == "SPA" ]; then
+                echo "APP_NAME=omnispa" >> $GITHUB_ENV
+              elif [ "$APP_NAME" == "GLOTA" ]; then
+                echo "APP_NAME=glota" >> $GITHUB_ENV
+              elif [ "$APP_NAME" == "Leads" ]; then
+                echo "APP_NAME=leads" >> $GITHUB_ENV
+              elif [ "$APP_NAME" == "Felix" ]; then
+                echo "APP_NAME=felix" >> $GITHUB_ENV
+              elif [ "$APP_NAME" == "Hermes" ]; then
+                echo "APP_NAME=hermes" >> $GITHUB_ENV
+              elif [ "$APP_NAME" == "Atlas" ]; then
+                echo "APP_NAME=atlas" >> $GITHUB_ENV
+              fi
 
-      - name: Pull Manifests
-        run: |
-          sudo apt install git -y
-          git init
-          git clone -b main https://$CI_USERNAME:$CI_PUSH_TOKEN@gitlab.int.poli.digital/poli-digital/infra/kubernetes-manifest.git
+          - name: Create GitHub deployment
+            uses: chrnorm/deployment-action@v2
+            id: deployment
+            with:
+              token: '${{ github.token }}'
+              environment-url: https://homolog.qa.poli.digital
+              environment: prod
+    
+          - name: Install yq
+            run: |
+              sudo apt update
+              sudo apt install -y wget
+              sudo wget https://github.com/mikefarah/yq/releases/download/v4.42.1/yq_linux_amd64 -O /usr/local/bin/yq
+              sudo chmod +x /usr/local/bin/yq
+    
+          - name: Checkout
+            uses: actions/checkout@v6
+            with:
+              ref: 'devops/chart'
 
-      - name: Update Helm Values
-        env:
-          DEPLOY_ID: ${{ steps.deployment.outputs.deployment_id }}
-        run: |
-          cd kubernetes-manifest/$APP_NAME/prod/
-          export DEPLOY_ID=$(echo -e \"$DEPLOY_ID\")
-          yq e '.image.tag = env(IMAGE_TAG)' -i values.yaml
-          yq e  '.podAnnotations."app.deploy_id" = env(DEPLOY_ID)' -i values.yaml
-          if ! [[ $(grep "app.project" values.yaml) ]]; then
-            yq e  '.podAnnotations."app.project" = env(GITHUB_REPOSITORY)' -i values.yaml
-          fi
-          if ! [[ $(grep "app.git_host" values.yaml) ]]; then
-            yq e  '.podAnnotations."app.git_host" = env(CI_SERVER_HOST)' -i values.yaml
-          fi
-          git config --global user.email "polichat@polichat.com.br"
-          git config --global user.name "Polichat CI/CD"
-          git add .
-          git commit -m "Update $APP_NAME to version $IMAGE_TAG"
-          git push origin main
-
-      - name: Update deployment status (in_progress)
-        if: success()
-        uses: chrnorm/deployment-status@v2
-        with:
-          token: '${{ github.token }}'
-          environment-url: https://homolog.qa.poli.digital
-          state: 'in_progress'
-          deployment-id: ${{ steps.deployment.outputs.deployment_id }}
-
-      - name: Update deployment status (failure)
-        if: failure()
-        uses: chrnorm/deployment-status@v2
-        with:
-          token: '${{ github.token }}'
-          environment-url: https://homolog.qa.poli.digital
-          state: 'failure'
-          deployment-id: ${{ steps.deployment.outputs.deployment_id }}
-    outputs:
-      ecr_username: ${{ steps.login-ecr.outputs.docker_username_244020757792_dkr_ecr_us_east_2_amazonaws_com }} # More information on these outputs can be found below in the 'Docker Credentials' section
-      ecr_pass: ${{ steps.login-ecr.outputs.docker_password_244020757792_dkr_ecr_us_east_2_amazonaws_com }}
-
-  checkVersionCards:
-    needs: dockerBuildUpdateProd
-    env:
-      git_hub_old_revision: main
-      git_hub_new_revision: ${{ github.event.pull_request.head.sha }}
-    permissions:
-      deployments: write
-      contents: read
-    runs-on: gharss
-    container:
-      image: 244020757792.dkr.ecr.us-east-2.amazonaws.com/version-cards-checker:2ba2c1c8-github
-      credentials:
-        username: ${{ needs.dockerBuildUpdateProd.outputs.ecr_username }}
-        password: ${{ needs.dockerBuildUpdateProd.outputs.ecr_pass }}
-    steps:
-      - name: run check
-        run: |
-          export git_hub_project=$(echo $GITHUB_REPOSITORY | cut -d"/" -f2) && \
-          echo $git_hub_project && \
-          echo $git_hub_old_revision && \
-          echo $git_hub_new_revision && \
-          python /app/main.py
+          - name: Update Helm Values
+            env:
+              DEPLOY_ID: ${{ steps.deployment.outputs.deployment_id }}
+            run: |
+              cd ./prod/
+              export DEPLOY_ID=$(echo -e \"$DEPLOY_ID\")
+              yq e '.image.tag = env(IMAGE_TAG)' -i values.yaml
+              yq e  '.podAnnotations."app.deploy_id" = env(DEPLOY_ID)' -i values.yaml
+              yq e  '.podAnnotations."app.branch" = env(CI_REF_NAME)' -i values.yaml
+              if ! [[ $(grep "app.project" values.yaml) ]]; then
+                yq e  '.podAnnotations."app.project" = env(GITHUB_REPOSITORY)' -i values.yaml
+              fi
+              if ! [[ $(grep "app.git_host" values.yaml) ]]; then
+                yq e  '.podAnnotations."app.git_host" = env(CI_SERVER_HOST)' -i values.yaml
+              fi
+              git config --global user.email "polichat@polichat.com.br"
+              git config --global user.name "Polichat CI/CD"
+              # Bloco para update dos workers da foundation
+              if [ "$APP_NAME" == "polichat-web-app" ]; then
+                for DIR in prod-webhook prod-webhook-zapi prod-webhook-waba prod-webhook-foundation prod-webhook-api prod-queue-worker; do
+                  if [ -d "../$DIR" ]; then
+                    cd "../$DIR"
+                    yq e '.image.tag = env(IMAGE_TAG)' -i values.yaml
+                    yq e '.podAnnotations."app.deploy_id" = env(DEPLOY_ID)' -i values.yaml
+                    yq e '.podAnnotations."app.branch" = env(CI_REF_NAME)' -i values.yaml
+                    if ! [[ $(grep "app.project" values.yaml) ]]; then
+                      yq e '.podAnnotations."app.project" = env(GITHUB_REPOSITORY)' -i values.yaml
+                    fi
+                    if ! [[ $(grep "app.git_host" values.yaml) ]]; then
+                      yq e '.podAnnotations."app.git_host" = env(CI_SERVER_HOST)' -i values.yaml
+                    fi
+                    cd - > /dev/null
+                  else
+                    echo "Diretório ../$DIR não encontrado, pulando..."
+                  fi
+                done
+              fi
+              if [ "$APP_NAME" == "omniapi" ]; then
+                echo "Updating $APP_NAME-cli"
+                cd ../prod-workers/
+                yq e '.image.tag = env(IMAGE_TAG)' -i values.yaml
+                yq e  '.podAnnotations."app.deploy_id" = env(DEPLOY_ID)' -i values.yaml
+                yq e  '.podAnnotations."app.branch" = env(CI_REF_NAME)' -i values.yaml
+                if ! [[ $(grep "app.project" values.yaml) ]]; then
+                  yq e  '.podAnnotations."app.project" = env(GITHUB_REPOSITORY)' -i values.yaml
+                fi
+                if ! [[ $(grep "app.git_host" values.yaml) ]]; then
+                  yq e  '.podAnnotations."app.git_host" = env(CI_SERVER_HOST)' -i values.yaml
+                fi
+              fi
+              if [ "$APP_NAME" == "meta-business-management" ] || [ "$APP_NAME" == "meta-whatsapp-cloud-api" ]; then
+                echo "Updating $APP_NAME-cli"
+                cd ../prod-cli/
+                yq e '.image.tag = env(IMAGE_TAG)' -i values.yaml
+                yq e  '.podAnnotations."app.deploy_id" = env(DEPLOY_ID)' -i values.yaml
+                yq e  '.podAnnotations."app.branch" = env(CI_REF_NAME)' -i values.yaml
+                if ! [[ $(grep "app.project" values.yaml) ]]; then
+                  yq e  '.podAnnotations."app.project" = env(GITHUB_REPOSITORY)' -i values.yaml
+                fi
+                if ! [[ $(grep "app.git_host" values.yaml) ]]; then
+                  yq e  '.podAnnotations."app.git_host" = env(CI_SERVER_HOST)' -i values.yaml
+                fi
+              fi
+              cd ..
+              git add .
+              # Novo bloco de lógica condicional para commit/push
+              if ! git diff-index --quiet HEAD; then
+                git commit -m "Update $APP_NAME to version $IMAGE_TAG"
+                git push origin devops/chart
+              else
+                echo "Nenhuma alteração detectada no values.yaml. Pulando commit e push."
+              fi
