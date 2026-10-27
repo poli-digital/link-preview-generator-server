@@ -6,7 +6,7 @@ image:
   repository: 244020757792.dkr.ecr.us-east-2.amazonaws.com/link-preview-generator-server
   pullPolicy: Always
   # Overrides the image tag whose default is the chart appVersion.
-  tag: dc7de2b30f4ba8ad7af5f6a42cab8fcc712c3a5d
+  tag: 6f92cbb4e511ee93c9d66894bc4995a3e9d7655e
 imagePullSecrets: []
 nameOverride: ""
 fullnameOverride: ""
@@ -29,8 +29,8 @@ podAnnotations:
   app.repository: https://github.com/poli-digital/link-preview-generator-server/tree/release/deploy-link
   app.description: link-preview-generator-server app
   app.owner: Poli
-  app.branch: 2/merge
-  app.deploy_id: "5299820638"
+  app.branch: 3/merge
+  app.deploy_id: "7359745979"
   app.project: poli-digital/link-preview-generator-server
   app.git_host: github.com
 podSecurityContext: {}
